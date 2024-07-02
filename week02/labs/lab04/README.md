@@ -2,7 +2,7 @@
 
 **NOTE: Use an A Cloud Guru (ACG) Azure Playground for this lab**
 
-1. Login to `acloudgur/home/sysadmin/source/repos/azure_docker_microservices/week02/labs/lab02u.com`, navigate to the `Playground` tab, and click the `Start Azure Sandbox` button
+1. Login to `acloudguru.com`, navigate to the `Playground` tab, and click the `Start Azure Sandbox` button
 1. Right click the `Open Sandbox` button and select to open in an Incognito or InPrivate window (depending on the browser you're using)
 1. Use the provided credentials to login to the Azure portal
 1. Launch `Cloud Shell` in the Azure portal
