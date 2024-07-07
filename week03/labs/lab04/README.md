@@ -1,4 +1,4 @@
-# Lab 01 - [Microservices in ACI](https://thenewstack.io/tutorial-building-deploying-microservices-application-azure-container-instances)
+# Lab 04 - Multiple Microservices in Azure
 
 **NOTE: Use an A Cloud Guru (ACG) Azure Playground for this lab**
 
@@ -30,45 +30,70 @@ export REG=toyshop$RANDOM
 1. Navigate to the `users` microservice folder using `cd azure_docker_microservices-public/week03/labs/lab04/users`
 1. Create a `Dockerfile` that can be used to generate and store an image in ACR for the `users` microservices
 1. Run `az acr build --registry $REG --resource-group $RG --image users-svc:latest .` to build an image for the microservice
-1. Repeat for both the `inventory` and `toyshop` microservices
-
-1. Navigate to the project folder using `cd todo-app`
-1. From `Cloud Shell` in the project folder, run `az acr build --registry $REG --resource-group $RG --image todo-app:latest .` to build an image for the TODO app from the provided Dockerfile
-1. Navigate to the `Repositories` area of your ACR to confirm creation of the image
-1. Use the following steps to create a new Cosmos DB (MongoDB) database:
-    - Run `az cosmosdb create --name $DB --kind MongoDB  --resource-group $RG`
-    - Run `export CONNSTR=$(az cosmosdb keys list --type connection-strings --resource-group $RG --name $DB --query connectionStrings[0].connectionString --output tsv)` to set a new environment variable for MongoDB Connection String
-1. Use the following to create a new container in ACI for hosting the TODO app:
+1. Repeat for both the `inventory` and `toyshop` microservices using `inventory-svc:latest` and `toyshop-svc:latest` for image identifiers
+1. Navigate to the `Repositories` area of your ACR to confirm creation of the images
+1. Use the following to create a new containerized instance of a MySQL database in ACI:
 
 ```
 az container create \
-    --name todo \
+    --name mysql \
+    --resource-group $RG \
+    --image mysql \
+    --environment-variables MYSQL_ROOT_PASSWORD=pass123  \
+    --ip-address public \
+    --port=3306
+```
+
+17. Use the following to create a new containerized instance of the `users` microservice in ACI:
+
+```
+az container create \
+    --name users-svc \
     --resource-group $RG \
     --registry-login-server $REG.azurecr.io \
     --registry-username $USR \
     --registry-password $PASSWD \
-    --image $REG.azurecr.io/todo-app:latest \
-    --environment-variables DBHOST="$CONNSTR" PORT=80 \
+    --image $REG.azurecr.io/users-svc:latest \
+    --environment-variables MYSQL_USERNAME=root MYSQL_SERVICE_HOST=$(az container show --name mysql --resource-group $RG --query ipAddress.ip --output tsv) MYSQL_PASSWORD=pass123 MYSQL_DATABASE=users_db \
     --ip-address public \
-    --port=80
+    --port=5050 \
+    --dns-name-label userssvc$RANDOM
 ```
 
-16. Use `az container show --name todo --resource-group $RG --query ipAddress.ip --output tsv` to get public IP for the container
-1. Try accessing the deployed app using `http://<public-ip-of-container>`
-1. Try adding a new TODO item - the create should succeed but on attempts to list existing TODO's, the query will fail (error in indexing policy)
-1. To fix, navigate to `Data Explorer` for your MongoDB running in Cosmos DB
-1. You can use one of the following options to add the required indexing:
-    - Expand the `todos` collection under the `admin` database, click `Scale & Settings`, and add a new index for `updated_at` (`Single Field` type); **Click Save to save the indexing configuration**:
+18. Use `az container show --name users-svc --resource-group $RG --query "{FQDN:ipAddress.fqdn,ProvisioningState:provisioningState}" --out table` to get FQDN for the `users` microservice container
+1. Use the following to create a new containerized instance of the `inventory` microservice in ACI:
 
-    ![Manually Adding Indexing Policy](../../images/manual-index.png)
+```
+az container create \
+    --name inventory-svc \
+    --resource-group $RG \
+    --registry-login-server $REG.azurecr.io \
+    --registry-username $USR \
+    --registry-password $PASSWD \
+    --image $REG.azurecr.io/inventory-svc:latest \
+    --environment-variables MYSQL_USERNAME=root MYSQL_SERVICE_HOST=$(az container show --name mysql --resource-group $RG --query ipAddress.ip --output tsv) MYSQL_PASSWORD=pass123 MYSQL_DATABASE=inventory_db \
+    --ip-address public \
+    --port=5100 \
+    --dns-name-label inventorysvc$RANDOM
+```
 
-    - Expand the `todos` collection under the `admin` database, click `Open Mongo Shell`, and execute the following:
+20. Use `az container show --name inventory-svc --resource-group $RG --query "{FQDN:ipAddress.fqdn,ProvisioningState:provisioningState}" --out table` to get FQDN for the `inventory` microservice container
+1. Use the following to create a new containerized instance of the `toyshop` microservice in ACI:
 
-    ```
-    use admin
-    db.todos.createIndex({updated_at:1})
-    ```
+```
+az container create \
+    --name toyshop-svc \
+    --resource-group $RG \
+    --registry-login-server $REG.azurecr.io \
+    --registry-username $USR \
+    --registry-password $PASSWD \
+    --image $REG.azurecr.io/toyshop-svc:latest \
+    --environment-variables MYSQL_USERNAME=root MYSQL_SERVICE_HOST=$(az container show --name mysql --resource-group $RG --query ipAddress.ip --output tsv) MYSQL_PASSWORD=pass123 MYSQL_DATABASE=toyshop_db AUTH_ENDPOINT="http://$(az container show --name users-svc --resource-group $RG --query ipAddress.fqdn --out tsv):5050/auth/verify" INV_ENDPOINT="http://$(az container show --name inventory-svc --resource-group $RG --query ipAddress.fqdn --out tsv):5100/inventory" \
+    --ip-address public \
+    --port=5000 \
+    --dns-name-label toyshopsvc$RANDOM
+```
 
-    ![Adding Indexing Policy Using Mongo Shell](../../images/mongo-shell.png)
-
-1. Return to the app and try refreshing your view
+22. Use `az container show --name toyshop-svc --resource-group $RG --query "{FQDN:ipAddress.fqdn,ProvisioningState:provisioningState}" --out table` to get FQDN for the `toyshop` microservice container
+1. Using POSTMan, cURL, or another tool of your choosing, test each of the microservice endpoints; there is a POSTMan collection provided in the `supporting-docs` folder
+1. For testing, you'll use http and the FQDN for each service gathered from the previous steps; see [How to add SSL to Azure Container Instance App?](https://stackoverflow.com/questions/60958057/how-to-add-ssl-to-azure-container-instance-app) for information on adding TLS to an ACI container
